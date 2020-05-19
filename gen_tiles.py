@@ -1,7 +1,6 @@
 import os
 import sys
 import math
-import imageio
 import numpy as np
 import pprint
 import fiona
@@ -9,6 +8,9 @@ import progressbar
 
 from PIL import Image
 from skimage.transform import resize
+
+zoom_level = 20
+tile_res = 256
 
 
 def ensure_dir(file_path):
@@ -28,26 +30,36 @@ def deg2num(lat_deg, lon_deg, zoom):
 
 
 # load from existing png image
-im = imageio.imread(sys.argv[1])
+im = Image.open(sys.argv[1])
+newshape = (im.size[0]*4, im.size[1]*4)
+im = im.resize(newshape, resample=Image.BICUBIC)
+im = np.array(im)
 print('image shape', im.shape)
 
 # load shape
-# shape_path = 'sys.argv[2]'
-# shape = fiona.open(shape_path)
-# location = [[c[1], c[0]] for c in shape.next()['geometry']['coordinates'][0]]
+# [48.793847257470574, 9.15551702148224] (275477, 180508, 176, 199)
+# [48.793847257470574, 9.210318693316855] (275557, 180508, 127, 199)
+# [48.757745326173854, 9.210318693316855] (275557, 180588, 127, 143)
+# [48.757745326173854, 9.15551702148224] (275477, 180588, 176, 143)
 #                                                     dim0=13346  dim1=13390
 #                                                      lat i   lon j
 #                                                      10215   10212
-# upper-left  [48.793847257470574, 9.15551702148224] (137738, 90254, 216, 99)
-# lower-right [48.757745326173854, 9.21031869331685] (137778, 90294, 191, 71)
-#
-# for origin in location[1:]:
-#     index = deg2num(origin[0], origin[1], zoom_level)
-#     print(origin, index)
+# upper-left  [48.793847257470574, 9.15551702148224] (275477, 180508, 176, 199)
+# lower-right [48.757745326173854, 9.21031869331685] (275557, 180588, 127, 143)
 
-ibase = [10215, 10212, 216, 99]
-zoom_level = 18
-tile_res = 256
+shape_path = sys.argv[2]
+shape = fiona.open(shape_path)
+location = [[c[1], c[0]] for c in shape.next()['geometry']['coordinates'][0]]
+
+ul_index = deg2num(location[1][0], location[1][1], zoom_level)
+lr_index = deg2num(location[3][0], location[3][1], zoom_level)
+
+ibase = [
+    (lr_index[0]-ul_index[0])*tile_res + (lr_index[2]-ul_index[2]),
+    (lr_index[1]-ul_index[1])*tile_res + (lr_index[3]-ul_index[3]),
+    ul_index[2],
+    ul_index[3]
+]
 
 
 class Tiles:
@@ -62,13 +74,15 @@ class Tiles:
 
     @staticmethod
     def ind2tile(i, j):
-        xtile, xpixel = divmod(int(i / 13345 * ibase[0] + ibase[2]), tile_res)
-        ytile, ypixel = divmod(int(j / 13389 * ibase[1] + ibase[3]), tile_res)
-        return (137738 + xtile, 90254 + ytile, xpixel, ypixel)
+        xtile, xpixel = divmod(
+            int(i / (im.shape[0]-1) * ibase[0] + ibase[2]), tile_res)
+        ytile, ypixel = divmod(
+            int(j / (im.shape[1]-1) * ibase[1] + ibase[3]), tile_res)
+        return (ul_index[0] + xtile, ul_index[1] + ytile, xpixel, ypixel)
 
     @staticmethod
     def create_tile(tile_res=256):
-        return np.zeros((tile_res, tile_res, 3))
+        return np.zeros((tile_res, tile_res, im.shape[2]))
 
     def save(self):
         for index, tile in self.tiles.items():
