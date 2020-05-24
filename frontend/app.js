@@ -19,7 +19,7 @@ const INITIAL_VIEW_STATE = {
   latitude: 48.793847257470574,
   minZoom: 2,
   maxZoom: 30,
-  zoom: 17
+  zoom: 12
 };
 
 export default class App extends Component {

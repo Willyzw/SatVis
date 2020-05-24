@@ -29,6 +29,10 @@ const CONFIG = {
     ]
   },
 
+  watchOptions: {
+    ignored: /node_modules/
+  },
+
   // Optional: Enables reading mapbox token from environment variable
   plugins: [new webpack.EnvironmentPlugin(['MapboxAccessToken'])]
 };
