@@ -9,7 +9,7 @@ import progressbar
 from PIL import Image
 from skimage.transform import resize
 
-zoom_level = 20
+zoom_level = 19
 tile_res = 256
 
 
@@ -31,8 +31,8 @@ def deg2num(lat_deg, lon_deg, zoom):
 
 # load from existing png image
 im = Image.open(sys.argv[1])
-newshape = (im.size[0]*4, im.size[1]*4)
-im = im.resize(newshape, resample=Image.BICUBIC)
+newshape = (im.size[0]*2, im.size[1]*2)
+im = im.resize(newshape, resample=Image.BILINEAR)
 im = np.array(im)
 print('image shape', im.shape)
 
@@ -75,19 +75,20 @@ class Tiles:
     @staticmethod
     def ind2tile(i, j):
         xtile, xpixel = divmod(
-            int(i / (im.shape[0]-1) * ibase[0] + ibase[2]), tile_res)
+            int(j / (im.shape[0]-1) * ibase[0] + ibase[2]), tile_res)
         ytile, ypixel = divmod(
-            int(j / (im.shape[1]-1) * ibase[1] + ibase[3]), tile_res)
+            int(i / (im.shape[1]-1) * ibase[1] + ibase[3]), tile_res)
         return (ul_index[0] + xtile, ul_index[1] + ytile, xpixel, ypixel)
 
     @staticmethod
     def create_tile(tile_res=256):
-        return np.zeros((tile_res, tile_res, im.shape[2]))
+        return np.zeros((tile_res, tile_res, 4))
 
     def save(self):
         for index, tile in self.tiles.items():
             im = Image.fromarray(tile.astype(np.uint8))
-            path = '{}/{}/{}.png'.format(self.zoom_level, index[0], index[1])
+            path = 'frontend/tiles/{}/{}/{}.png'.format(
+                self.zoom_level, index[0], index[1])
             ensure_dir(path)
             im.save(path)
 
@@ -96,7 +97,9 @@ leaftiles = Tiles(zoom_level)
 for i in progressbar.progressbar(range(im.shape[0])):
     for j in range(im.shape[1]):
         xtile, ytile, xpixel, ypixel = Tiles.ind2tile(i, j)
-        leaftiles[(xtile, ytile)][ypixel, xpixel] = im[i, j]
+        leaftiles[(xtile, ytile)][ypixel, xpixel, :im.shape[2]] = im[i, j]
+        if im[i, j].tolist() != [0,0,0]:
+            leaftiles[(xtile, ytile)][ypixel, xpixel, -1] = 255
 
 print('save {} tiles of zoom {}'.format(
     len(leaftiles.tiles), leaftiles.zoom_level))
