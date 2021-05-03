@@ -4,12 +4,11 @@ import math
 import numpy as np
 import pprint
 import fiona
-import progressbar
-
+from tqdm import tqdm
 from PIL import Image
 from skimage.transform import resize
 
-zoom_level = 19
+zoom_level = 21
 tile_res = 256
 
 
@@ -47,12 +46,17 @@ print('image shape', im.shape)
 # upper-left  [48.793847257470574, 9.15551702148224] (275477, 180508, 176, 199)
 # lower-right [48.757745326173854, 9.21031869331685] (275557, 180588, 127, 143)
 
-shape_path = sys.argv[2]
-shape = fiona.open(shape_path)
-location = [[c[1], c[0]] for c in shape.next()['geometry']['coordinates'][0]]
-
-ul_index = deg2num(location[1][0], location[1][1], zoom_level)
-lr_index = deg2num(location[3][0], location[3][1], zoom_level)
+if len(sys.argv) > 2:
+    shape_path = sys.argv[2]
+    shape = fiona.open(shape_path)
+    location = [[c[1], c[0]] for c in shape.next()['geometry']['coordinates'][0]]
+    ul_index = deg2num(location[1][0], location[1][1], zoom_level)
+    lr_index = deg2num(location[3][0], location[3][1], zoom_level)
+else:
+    location = ["8.41845808300030","49.00919802814314","8.42266536790793","49.01415763164157"]
+    location = [float(n) for n in location]
+    ul_index = deg2num(location[3], location[0], zoom_level)
+    lr_index = deg2num(location[1], location[2], zoom_level)
 
 ibase = [
     (lr_index[0]-ul_index[0])*tile_res + (lr_index[2]-ul_index[2]),
@@ -74,10 +78,10 @@ class Tiles:
 
     @staticmethod
     def ind2tile(i, j):
-        xtile, xpixel = divmod(
-            int(j / (im.shape[0]-1) * ibase[0] + ibase[2]), tile_res)
-        ytile, ypixel = divmod(
-            int(i / (im.shape[1]-1) * ibase[1] + ibase[3]), tile_res)
+        x = j / (im.shape[1]-1) * ibase[0] + ibase[2]
+        y = i / (im.shape[0]-1) * ibase[1] + ibase[3]
+        xtile, xpixel = np.divmod(x.astype(int), tile_res)
+        ytile, ypixel = np.divmod(y.astype(int), tile_res)
         return (ul_index[0] + xtile, ul_index[1] + ytile, xpixel, ypixel)
 
     @staticmethod
@@ -93,16 +97,17 @@ class Tiles:
             im.save(path)
 
 
+ii, jj = np.meshgrid(np.arange(im.shape[0]), np.arange(im.shape[1]))
+ii = ii.ravel()
+jj = jj.ravel()
+xtiles, ytiles, xpixels, ypixels = Tiles.ind2tile(ii, jj)
 leaftiles = Tiles(zoom_level)
-for i in progressbar.progressbar(range(im.shape[0])):
-    for j in range(im.shape[1]):
-        xtile, ytile, xpixel, ypixel = Tiles.ind2tile(i, j)
-        leaftiles[(xtile, ytile)][ypixel, xpixel, :im.shape[2]] = im[i, j]
-        if im[i, j].tolist() != [0,0,0]:
-            leaftiles[(xtile, ytile)][ypixel, xpixel, -1] = 255
+for (i, j, xtile, ytile, xpixel, ypixel) in tqdm(zip(ii, jj, xtiles, ytiles, xpixels, ypixels), total=len(ii)):
+    leaftiles[(xtile, ytile)][ypixel, xpixel, :im.shape[2]] = im[i, j]
+    if any(im[i, j, :4]):
+        leaftiles[(xtile, ytile)][ypixel, xpixel, -1] = 255
 
-print('save {} tiles of zoom {}'.format(
-    len(leaftiles.tiles), leaftiles.zoom_level))
+print('save {} tiles of zoom {}'.format(len(leaftiles.tiles), leaftiles.zoom_level))
 leaftiles.save()
 
 
@@ -122,7 +127,6 @@ for z in range(zoom_level, 0, -1):
                     offset_y = 0 if y % 2 == 0 else int(tile_res / 2)
                     parents[(int(base_x/2), int(base_y/2))][offset_y:offset_y +
                                                             int(tile_res/2), offset_x:offset_x+int(tile_res/2)] = parent_part
-    print('save {} tiles of zoom {}'.format(
-        len(parents.tiles), parents.zoom_level))
+    print('save {} tiles of zoom {}'.format(len(parents.tiles), parents.zoom_level))
     parents.save()
     leaftiles = parents
