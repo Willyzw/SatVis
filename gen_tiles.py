@@ -4,6 +4,8 @@ import math
 import numpy as np
 import pprint
 import fiona
+import torch.nn.functional as F
+from torch import from_numpy
 from tqdm import tqdm
 from PIL import Image
 from skimage.transform import resize
@@ -85,6 +87,15 @@ class Tiles:
         return (ul_index[0] + xtile, ul_index[1] + ytile, xpixel, ypixel)
 
     @staticmethod
+    def tile2ind(xtile, ytile, xpixel, ypixel):
+        x = (xtile - ul_index[0]) * tile_res + xpixel
+        y = (ytile - ul_index[1]) * tile_res + ypixel
+        # F.grid_sample demands the range [-1, 1]
+        j = ((x - ibase[2]) / ibase[0] - 0.5) * 2
+        i = ((y - ibase[3]) / ibase[1] - 0.5) * 2
+        return j, i
+
+    @staticmethod
     def create_tile(tile_res=256):
         return np.zeros((tile_res, tile_res, 4))
 
@@ -96,17 +107,16 @@ class Tiles:
             ensure_dir(path)
             im.save(path)
 
-
-ii, jj = np.meshgrid(np.arange(im.shape[0]), np.arange(im.shape[1]))
-ii = ii.ravel()
-jj = jj.ravel()
-xtiles, ytiles, xpixels, ypixels = Tiles.ind2tile(ii, jj)
+im = from_numpy(im.astype("float64")).permute(2,0,1).unsqueeze(0)
 leaftiles = Tiles(zoom_level)
-for (i, j, xtile, ytile, xpixel, ypixel) in tqdm(zip(ii, jj, xtiles, ytiles, xpixels, ypixels), total=len(ii)):
-    leaftiles[(xtile, ytile)][ypixel, xpixel, :im.shape[2]] = im[i, j]
-    if any(im[i, j, :4]):
-        leaftiles[(xtile, ytile)][ypixel, xpixel, -1] = 255
-
+for xtile in tqdm(range(ul_index[0], lr_index[0]+1)):
+    for ytile in range(ul_index[1], lr_index[1]+1):
+        xpixel, ypixel = np.meshgrid(np.arange(tile_res), np.arange(tile_res))
+        j, i = Tiles.tile2ind(xtile, ytile, xpixel, ypixel)
+        grid = np.stack([j,i], axis=-1)
+        grid = from_numpy(grid.astype("float64")).unsqueeze(0)
+        tile = F.grid_sample(im, grid, padding_mode="zeros").squeeze().permute(1,2,0).numpy()
+        leaftiles.tiles[(xtile, ytile)] = tile
 print('save {} tiles of zoom {}'.format(len(leaftiles.tiles), leaftiles.zoom_level))
 leaftiles.save()
 

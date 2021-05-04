@@ -60,7 +60,7 @@ export default class App extends Component {
       id: 'tile-layer',
       data: '/tiles/{z}/{x}/{y}.png',
       minZoom: 12,
-      maxZoom: 19,
+      maxZoom: 21,
       opacity: 0.8,
       renderSubLayers: props => {
         const {
